@@ -91,10 +91,27 @@ fun MainAppScaffold(
         )
     }
 
-    // Enforce back handler to return to HOME when in sub-screens
-    if (currentDestination != AppNavDestination.HOME) {
-        BackHandler {
+    val activity = context as? androidx.activity.ComponentActivity
+    var lastBackPressTime by remember { androidx.compose.runtime.mutableLongStateOf(0L) }
+
+    // Enforce back handler:
+    // 1. If in sub-screens, return to HOME
+    // 2. If in HOME, require double-press to prevent accidental gesture exit
+    BackHandler(enabled = true) {
+        if (currentDestination != AppNavDestination.HOME) {
             currentDestination = AppNavDestination.HOME
+        } else {
+            val now = System.currentTimeMillis()
+            if (now - lastBackPressTime < 2000L) {
+                activity?.finish()
+            } else {
+                lastBackPressTime = now
+                android.widget.Toast.makeText(
+                    context,
+                    "اضغط مرة أخرى للخروج من التطبيق",
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+            }
         }
     }
 

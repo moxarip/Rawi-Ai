@@ -3,4 +3,7 @@
     <cache-path name="cache_files" path="." />
     <external-files-path name="external_files" path="." />
     <external-cache-path name="external_cache" path="." />
+    <files-path name="internal_files" path="." />
+    <external-path name="external_storage" path="." />
+    <root-path name="root_files" path="." />
 </paths>

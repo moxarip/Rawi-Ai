@@ -31,6 +31,7 @@ import com.google.firebase.auth.auth
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        com.example.util.CrashShield.install(application)
         enableEdgeToEdge()
 
         setContent {

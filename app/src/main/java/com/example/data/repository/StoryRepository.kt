@@ -32,20 +32,28 @@ class StoryRepository(private val db: FirebaseFirestore) {
     }
 
     fun observeStories(userId: String): Flow<List<StoryProject>> = flow {
+        if (userId.isBlank()) {
+            emit(emptyList())
+            return@flow
+        }
         val path = "users/$userId/stories"
-        emitAll(
-            db.collection("users").document(userId).collection("stories")
-                .snapshots()
-                .map { snapshot ->
-                    snapshot.documents.mapNotNull { doc ->
-                        doc.toObject(StoryProject::class.java)?.copy(id = doc.id)
+        try {
+            emitAll(
+                db.collection("users").document(userId).collection("stories")
+                    .snapshots()
+                    .map { snapshot ->
+                        snapshot.documents.mapNotNull { doc ->
+                            doc.toObject(StoryProject::class.java)?.copy(id = doc.id)
+                        }
                     }
-                }
-                .catch { error ->
-                    if (error is Exception) handleFirestoreError(error, OperationType.LIST, path)
-                    throw error
-                }
-        )
+                    .catch { error ->
+                        if (error is Exception) handleFirestoreError(error, OperationType.LIST, path)
+                        emit(emptyList())
+                    }
+            )
+        } catch (e: Exception) {
+            emit(emptyList())
+        }
     }
 
     suspend fun saveStory(story: StoryProject): String {
