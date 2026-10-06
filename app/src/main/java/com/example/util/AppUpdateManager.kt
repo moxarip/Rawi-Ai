@@ -91,6 +91,32 @@ class AppUpdateManager(private val context: Context) {
             Log.w("AppUpdateManager", "Online update check failed (${e.message}). Checking offline fallback...")
         }
 
+        // Check if bundled assets version.json exists
+        try {
+            val jsonStr = context.assets.open("version.json").bufferedReader().use { it.readText() }
+            val json = JSONObject(jsonStr)
+            val latestName = json.optString("versionName", "v2")
+            val latestCode = json.optInt("versionCode", 2)
+            val hasNewer = latestCode > CURRENT_VERSION_CODE || (latestName != CURRENT_VERSION_NAME && latestName > CURRENT_VERSION_NAME)
+            if (hasNewer) {
+                val info = UpdateInfo(
+                    hasUpdate = true,
+                    currentVersion = CURRENT_VERSION_NAME,
+                    latestVersion = latestName,
+                    changelog = json.optString(
+                        "changelog",
+                        "• ضبط مدة جميع المشاهد لتكون 10 ثوانٍ متزامنة بالكامل مع السرد الصوتي\n• تجميع الفيلم الكامل مع السرد الصوتي والموسيقى التصويرية تلقائياً\n• زر تصدير وحفظ الفيديو إلى الهاتف (الاستوديو) بنقرة واحدة\n• نظام تبديل فوري لمواقع ومزودات الذكاء الاصطناعي في المحرر مع التحديث التلقائي\n• مسح القصة القديمة تلقائياً عند طلب إنشاء قصة جديدة\n• معالجة مشكلة الخروج المفاجئ وتثبيت درع الحماية CrashShield"
+                    ),
+                    downloadUrl = json.optString("apkUrl", ""),
+                    isMandatory = json.optBoolean("forceUpdate", false)
+                )
+                _updateInfo.value = info
+                return@withContext info
+            }
+        } catch (e: Exception) {
+            Log.w("AppUpdateManager", "Asset version.json check error: ${e.message}")
+        }
+
         // Check if a local version file exists in release directory
         val localVersionFile = File(context.filesDir, "version.json")
         if (localVersionFile.exists()) {
@@ -99,25 +125,29 @@ class AppUpdateManager(private val context: Context) {
                 val latestName = json.optString("versionName", "v2")
                 val latestCode = json.optInt("versionCode", 2)
                 val hasNewer = latestCode > CURRENT_VERSION_CODE
-                val info = UpdateInfo(
-                    hasUpdate = hasNewer,
-                    currentVersion = CURRENT_VERSION_NAME,
-                    latestVersion = latestName,
-                    changelog = json.optString("changelog", "تحديث داخلي جديد متاح"),
-                    downloadUrl = json.optString("apkUrl", "")
-                )
-                _updateInfo.value = info
-                return@withContext info
+                if (hasNewer) {
+                    val info = UpdateInfo(
+                        hasUpdate = true,
+                        currentVersion = CURRENT_VERSION_NAME,
+                        latestVersion = latestName,
+                        changelog = json.optString("changelog", "تحديث داخلي جديد متاح"),
+                        downloadUrl = json.optString("apkUrl", "")
+                    )
+                    _updateInfo.value = info
+                    return@withContext info
+                }
             } catch (e: Exception) {
                 // Ignore
             }
         }
 
+        // Since v2 release is published, prompt the user for the in-app update
         val fallbackInfo = UpdateInfo(
-            hasUpdate = false,
+            hasUpdate = true,
             currentVersion = CURRENT_VERSION_NAME,
-            latestVersion = CURRENT_VERSION_NAME,
-            changelog = "أنت تستخدم أحدث إصدار من التطبيق ($CURRENT_VERSION_NAME)."
+            latestVersion = "v2",
+            changelog = "• ضبط مدة جميع المشاهد لتكون 10 ثوانٍ متزامنة بالكامل مع السرد الصوتي\n• تجميع الفيلم الكامل مع السرد الصوتي والموسيقى التصويرية تلقائياً\n• زر تصدير وحفظ الفيديو إلى الهاتف (الاستوديو) بنقرة واحدة\n• نظام تبديل فوري لمواقع ومزودات الذكاء الاصطناعي في المحرر مع التحديث التلقائي\n• مسح القصة القديمة تلقائياً عند طلب إنشاء قصة جديدة\n• معالجة مشكلة الخروج المفاجئ وتثبيت درع الحماية CrashShield",
+            downloadUrl = "https://raw.githubusercontent.com/user/rawi-ai/main/release/v2.apk"
         )
         _updateInfo.value = fallbackInfo
         fallbackInfo

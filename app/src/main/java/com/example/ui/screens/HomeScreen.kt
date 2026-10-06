@@ -115,6 +115,8 @@ fun HomeScreen(
     val genState by viewModel.generationState.collectAsState()
     val quickTitles by viewModel.quickTitles.collectAsState()
     val activeStory by viewModel.activeStory.collectAsState()
+    val updateInfo by viewModel.appUpdateManager.updateInfo.collectAsState()
+    val context = androidx.compose.ui.platform.LocalContext.current
     val providerManager = viewModel.providerManager
     val selectedImageProvider by providerManager.selectedImageProvider.collectAsState()
     val isGoogleOneLinked by providerManager.isGoogleOneLinked.collectAsState()
@@ -222,6 +224,63 @@ fun HomeScreen(
                             tint = StudioSecondaryLight,
                             modifier = Modifier.size(28.dp)
                         )
+                    }
+                }
+            }
+        }
+
+        // In-App Update Available Banner
+        if (updateInfo.hasUpdate) {
+            item {
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF261247)),
+                    border = CardDefaults.outlinedCardBorder().copy(
+                        brush = Brush.linearGradient(listOf(StudioPrimary, StudioSecondary))
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { viewModel.checkForUpdates() }
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .padding(12.dp)
+                            .fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = StudioSecondaryLight, modifier = Modifier.size(24.dp))
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "تحديث داخلي جديد متاح (${updateInfo.latestVersion})",
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color.White,
+                                    fontSize = 13.sp
+                                )
+                                Text(
+                                    text = "اضغط لتنزيل وتثبيت الإصدار الجديد مباشرة من داخل التطبيق",
+                                    color = Color(0xFFCBD5E1),
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+
+                        Button(
+                            onClick = {
+                                viewModel.downloadAndInstallUpdate { success, msg ->
+                                    android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = StudioSecondary),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("تثبيت v2", color = Color.Black, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }
