@@ -42,6 +42,7 @@ import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.LibraryScreen
 import com.example.ui.screens.LiveCompanionScreen
 import com.example.ui.screens.ProfileScreen
+import com.example.ui.screens.StoryCreationScreen
 import com.example.ui.theme.DarkBackground
 import com.example.ui.theme.DarkSurface
 import com.example.ui.theme.StudioPrimary
@@ -51,6 +52,7 @@ enum class AppNavDestination(
     val title: String,
     val testTag: String
 ) {
+    CREATE("إنشاء قصة", "nav_create"),
     HOME("الاستوديو", "nav_home"),
     EDITOR("المحرر", "nav_editor"),
     LIBRARY("المكتبة", "nav_library"),
@@ -92,7 +94,8 @@ fun MainAppScaffold(
                         onClick = { currentDestination = destination },
                         icon = {
                             val icon = when (destination) {
-                                AppNavDestination.HOME -> if (isSelected) Icons.Filled.AutoAwesome else Icons.Outlined.AutoAwesome
+                                AppNavDestination.CREATE -> if (isSelected) Icons.Filled.AutoAwesome else Icons.Outlined.AutoAwesome
+                                AppNavDestination.HOME -> if (isSelected) Icons.Filled.Movie else Icons.Outlined.Movie
                                 AppNavDestination.EDITOR -> if (isSelected) Icons.Filled.Movie else Icons.Outlined.Movie
                                 AppNavDestination.LIBRARY -> if (isSelected) Icons.Filled.VideoLibrary else Icons.Outlined.VideoLibrary
                                 AppNavDestination.LIVE -> if (isSelected) Icons.Filled.GraphicEq else Icons.Outlined.GraphicEq
@@ -126,6 +129,14 @@ fun MainAppScaffold(
                 .padding(innerPadding)
         ) {
             when (currentDestination) {
+                AppNavDestination.CREATE -> {
+                    StoryCreationScreen(
+                        viewModel = viewModel,
+                        onNavigateToEditor = {
+                            currentDestination = AppNavDestination.EDITOR
+                        }
+                    )
+                }
                 AppNavDestination.HOME -> {
                     HomeScreen(
                         viewModel = viewModel,

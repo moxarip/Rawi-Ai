@@ -280,6 +280,7 @@ fun HomeScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(120.dp)
+                                .testTag("story_idea_input")
                                 .testTag("story_prompt_input"),
                             placeholder = { Text("اكتب تفاصيل القصة والشخصيات والأحداث المشوقة...", color = Color.Gray) },
                             colors = OutlinedTextFieldDefaults.colors(
@@ -658,6 +659,8 @@ fun HomeScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp)
+                    .testTag("create_button")
+                    .testTag("create_story_button")
                     .testTag("generate_story_button"),
                 shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(
@@ -681,9 +684,9 @@ fun HomeScreen(
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
-                            text = if (selectedTab == 0) "إنشاء القصة والمشاهد بالذكاء الاصطناعي" else "تحليل الفيديو وبناء النسخة الجديدة",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp
+                            text = if (selectedTab == 0) "إنشاء" else "تحليل وإنشاء",
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 17.sp
                         )
                     }
                 }
