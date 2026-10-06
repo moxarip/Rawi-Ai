@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import android.widget.Toast
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -27,12 +28,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -57,6 +61,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -82,12 +87,13 @@ fun CinematicVideoPlayerDialog(
     viewModel: StoryViewModel,
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
     var activeSceneIdx by remember { mutableIntStateOf(initialSceneIndex.coerceIn(0, (story.scenes.size - 1).coerceAtLeast(0))) }
     var isPlaying by remember { mutableStateOf(true) }
     var progress by remember { mutableFloatStateOf(0f) }
 
     val currentScene = story.scenes.getOrNull(activeSceneIdx) ?: StoryScene()
-    val sceneDurationSeconds = currentScene.durationSec.coerceAtLeast(4)
+    val sceneDurationSeconds = 10
 
     // Play TTS speech and BGM if available
     LaunchedEffect(activeSceneIdx, isPlaying) {
@@ -314,19 +320,40 @@ fun CinematicVideoPlayerDialog(
                     }
                 }
 
-                // Top Close Button
-                IconButton(
-                    onClick = {
-                        viewModel.audioPlayer.stop()
-                        onDismiss()
-                    },
+                // Top Header Row with Export and Close Buttons
+                Row(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .padding(16.dp)
-                        .background(Color(0xFF261D42), CircleShape)
-                        .testTag("close_video_dialog")
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(imageVector = Icons.Default.Close, contentDescription = "إغلاق", tint = Color.White)
+                    Button(
+                        onClick = {
+                            viewModel.exportVideoToDevice(context) { success, msg ->
+                                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0D9488)),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.testTag("dialog_export_to_phone_button")
+                    ) {
+                        Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("تصدير للهاتف", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+
+                    IconButton(
+                        onClick = {
+                            viewModel.audioPlayer.stop()
+                            onDismiss()
+                        },
+                        modifier = Modifier
+                            .background(Color(0xFF261D42), CircleShape)
+                            .testTag("close_video_dialog")
+                    ) {
+                        Icon(imageVector = Icons.Default.Close, contentDescription = "إغلاق", tint = Color.White)
+                    }
                 }
 
                 // Bottom Video Player Controls Bar

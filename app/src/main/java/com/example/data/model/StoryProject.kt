@@ -10,7 +10,9 @@ data class StoryScene(
     val imagePrompt: String = "",
     val imageUrl: String = "",
     val videoUrl: String = "",
-    val durationSec: Int = 5
+    val durationSec: Int = 10,
+    val imageProviderName: String = "",
+    val videoProviderName: String = ""
 )
 
 data class StoryProject(

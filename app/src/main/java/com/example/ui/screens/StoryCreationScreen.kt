@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -22,11 +23,14 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Button
@@ -60,6 +64,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -67,6 +72,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.GenerationState
 import com.example.ui.StoryViewModel
+import com.example.ui.components.CinematicVideoPlayerDialog
 import com.example.ui.theme.DarkBackground
 import com.example.ui.theme.DarkBorder
 import com.example.ui.theme.DarkSurface
@@ -106,6 +112,17 @@ fun StoryCreationScreen(
     val selectedImageProvider by providerManager.selectedImageProvider.collectAsState()
     val isGoogleOneLinked by providerManager.isGoogleOneLinked.collectAsState()
     val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
+    var showMoviePlayer by remember { mutableStateOf(false) }
+
+    if (showMoviePlayer && activeStory != null) {
+        CinematicVideoPlayerDialog(
+            story = activeStory!!,
+            initialSceneIndex = 0,
+            viewModel = viewModel,
+            onDismiss = { showMoviePlayer = false }
+        )
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -235,18 +252,35 @@ fun StoryCreationScreen(
                             color = Color.White
                         )
 
-                        // Quick title generator button using gemini-3.1-flash-lite
-                        IconButton(
-                            onClick = {
-                                viewModel.fetchQuickTitles(storyIdeaText.take(40))
-                            },
-                            modifier = Modifier.testTag("quick_title_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Lightbulb,
-                                contentDescription = "اقتراح أفكار",
-                                tint = StudioSecondaryLight
-                            )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedButton(
+                                onClick = {
+                                    storyIdeaText = ""
+                                    viewModel.startNewStory()
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.testTag("new_story_clear_button")
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp), tint = StudioSecondaryLight)
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("قصة جديدة", color = Color.White, fontSize = 11.sp)
+                            }
+
+                            Spacer(modifier = Modifier.width(4.dp))
+
+                            // Quick title generator button using gemini-3.1-flash-lite
+                            IconButton(
+                                onClick = {
+                                    viewModel.fetchQuickTitles(storyIdeaText.take(40))
+                                },
+                                modifier = Modifier.testTag("quick_title_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Lightbulb,
+                                    contentDescription = "اقتراح أفكار",
+                                    tint = StudioSecondaryLight
+                                )
+                            }
                         }
                     }
 
@@ -602,14 +636,64 @@ fun StoryCreationScreen(
                         )
                     )
 
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        OutlinedButton(
+                            onClick = {
+                                storyIdeaText = ""
+                                viewModel.startNewStory()
+                            },
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("مسح وقصة جديدة", color = Color(0xFFF87171), fontSize = 11.sp)
+                        }
+
+                        Button(
+                            onClick = onNavigateToEditor,
+                            colors = ButtonDefaults.buttonColors(containerColor = StudioSecondary),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Icon(Icons.Default.Edit, contentDescription = null, tint = Color.Black, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("محرر المشاهد", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+
+            // Play Full Movie & Export to Phone buttons right on StoryCreationScreen
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     Button(
-                        onClick = onNavigateToEditor,
-                        colors = ButtonDefaults.buttonColors(containerColor = StudioSecondary),
-                        shape = RoundedCornerShape(8.dp)
+                        onClick = { showMoviePlayer = true },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE11D48)),
+                        shape = RoundedCornerShape(12.dp)
                     ) {
-                        Icon(Icons.Default.Edit, contentDescription = null, tint = Color.Black, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("محرر المشاهد", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("عرض الفيلم الكامل", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    Button(
+                        onClick = {
+                            viewModel.exportVideoToDevice(context) { success, msg ->
+                                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                            }
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0D9488)),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("تصدير للهاتف", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }

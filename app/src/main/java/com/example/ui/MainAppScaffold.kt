@@ -37,6 +37,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.collectAsState
+import com.example.ui.components.InAppUpdateDialog
 import com.example.ui.screens.EditorScreen
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.LibraryScreen
@@ -65,7 +67,29 @@ fun MainAppScaffold(
     viewModel: StoryViewModel,
     onSignOut: () -> Unit
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     var currentDestination by remember { mutableStateOf(AppNavDestination.HOME) }
+    val updateInfo by viewModel.appUpdateManager.updateInfo.collectAsState()
+
+    // Silently check for updates on launch
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        viewModel.checkForUpdates()
+    }
+
+    // In-App Update Dialog (shown when v2 or newer is detected on GitHub)
+    if (updateInfo.hasUpdate) {
+        InAppUpdateDialog(
+            updateManager = viewModel.appUpdateManager,
+            onDownloadAndInstall = {
+                viewModel.downloadAndInstallUpdate { success, msg ->
+                    android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
+                }
+            },
+            onDismiss = {
+                viewModel.dismissUpdate()
+            }
+        )
+    }
 
     // Enforce back handler to return to HOME when in sub-screens
     if (currentDestination != AppNavDestination.HOME) {

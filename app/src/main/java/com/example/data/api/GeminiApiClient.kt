@@ -64,7 +64,7 @@ class GeminiApiClient(private val context: Context) {
                   "sceneIndex": 1,
                   "narration": "النص الصوتي المعلق لهذا المشهد بالعربية الفصحى المشوقة",
                   "imagePrompt": "A detailed English visual prompt for generating the scene background image, cinematic style, high quality",
-                  "durationSec": 5
+                  "durationSec": 10
                 }
               ]
             }
@@ -168,7 +168,7 @@ class GeminiApiClient(private val context: Context) {
                   "sceneIndex": 1,
                   "narration": "التعليق الصوتي للمشهد باللغة العربية",
                   "imagePrompt": "Detailed English image generation prompt for this scene",
-                  "durationSec": 6
+                  "durationSec": 10
                 }
               ]
             }
@@ -728,7 +728,7 @@ class GeminiApiClient(private val context: Context) {
                             sceneIndex = sObj.optInt("sceneIndex", i + 1),
                             narration = sObj.optString("narration", ""),
                             imagePrompt = sObj.optString("imagePrompt", "Cinematic scene illustration"),
-                            durationSec = sObj.optInt("durationSec", 5)
+                            durationSec = 10
                         )
                     )
                 }
@@ -740,7 +740,7 @@ class GeminiApiClient(private val context: Context) {
                         sceneIndex = 1,
                         narration = fullScript.take(150),
                         imagePrompt = "Cinematic opening shot of $title, $style aesthetic, 8k resolution",
-                        durationSec = 5
+                        durationSec = 10
                     )
                 )
             }
@@ -782,19 +782,19 @@ class GeminiApiClient(private val context: Context) {
                     sceneIndex = 1,
                     narration = "في بداية الحكاية، انطلقت الشرارة الأولى للمغامرة بوضوح وإثارة.",
                     imagePrompt = "Cinematic wide angle opening shot of a captivating scene, $style style, rich atmospheric lighting",
-                    durationSec = 6
+                    durationSec = 10
                 ),
                 StoryScene(
                     sceneIndex = 2,
                     narration = "تصاعدت الأحداث حين واجه الأبطال التحدي الحاسم وسط أجواء مشوقة.",
                     imagePrompt = "Dramatic action shot capturing peak narrative tension, dramatic rim lighting, detailed background",
-                    durationSec = 6
+                    durationSec = 10
                 ),
                 StoryScene(
                     sceneIndex = 3,
                     narration = "وفي النهاية، تجلت الحقيقة لترسم ختاماً لا يُنسى في الذاكرة.",
                     imagePrompt = "Epic concluding shot with serene golden hour lighting, cinematic composition, breathtaking landscape",
-                    durationSec = 6
+                    durationSec = 10
                 )
             ),
             fullScript = prompt

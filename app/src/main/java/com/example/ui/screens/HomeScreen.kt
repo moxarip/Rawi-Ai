@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -113,6 +114,7 @@ fun HomeScreen(
 
     val genState by viewModel.generationState.collectAsState()
     val quickTitles by viewModel.quickTitles.collectAsState()
+    val activeStory by viewModel.activeStory.collectAsState()
     val providerManager = viewModel.providerManager
     val selectedImageProvider by providerManager.selectedImageProvider.collectAsState()
     val isGoogleOneLinked by providerManager.isGoogleOneLinked.collectAsState()
@@ -220,6 +222,57 @@ fun HomeScreen(
                             tint = StudioSecondaryLight,
                             modifier = Modifier.size(28.dp)
                         )
+                    }
+                }
+            }
+        }
+
+        // Active Story Banner with immediate reset option
+        if (activeStory != null) {
+            item {
+                Card(
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1735)),
+                    border = CardDefaults.outlinedCardBorder().copy(brush = Brush.linearGradient(listOf(DarkBorder, StudioSecondary.copy(alpha = 0.5f)))),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .padding(12.dp)
+                            .fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "المشروع الحالي: ${activeStory?.title?.take(24)}...",
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                fontSize = 13.sp
+                            )
+                            Text(
+                                text = "كل مشهد 10 ثوانٍ • جاهز للتصدير والعرض",
+                                color = StudioSecondaryLight,
+                                fontSize = 11.sp
+                            )
+                        }
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            OutlinedButton(
+                                onClick = { viewModel.startNewStory() },
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text("مسح وبدء جديد", color = Color(0xFFF87171), fontSize = 10.5.sp)
+                            }
+
+                            Button(
+                                onClick = onNavigateToEditor,
+                                colors = ButtonDefaults.buttonColors(containerColor = StudioSecondary),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text("المحرر", color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
                     }
                 }
             }

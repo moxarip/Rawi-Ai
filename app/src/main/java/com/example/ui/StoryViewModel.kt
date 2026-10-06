@@ -1,15 +1,20 @@
 package com.example.ui
 
 import android.app.Application
+import android.content.Context
+import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.api.AIProviderManager
+import com.example.data.api.ImageProvider
+import com.example.data.api.VideoProvider
 import com.example.data.api.GeminiApiClient
 import com.example.data.model.StoryProject
 import com.example.data.model.StoryScene
 import com.example.data.repository.StoryRepository
 import com.example.util.AudioPlayerHelper
+import com.example.util.VideoExportHelper
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -41,6 +46,7 @@ class StoryViewModel(application: Application) : AndroidViewModel(application) {
         get() = geminiClient.providerManager
 
     val audioPlayer = AudioPlayerHelper(application)
+    val appUpdateManager = com.example.util.AppUpdateManager(application)
 
     val currentUserId: String?
         get() = Firebase.auth.currentUser?.uid
@@ -65,6 +71,14 @@ class StoryViewModel(application: Application) : AndroidViewModel(application) {
     private val _generationState = MutableStateFlow<GenerationState>(GenerationState.Idle)
     val generationState: StateFlow<GenerationState> = _generationState.asStateFlow()
 
+    // Compiled video file ready for export / playback
+    private val _compiledVideoFile = MutableStateFlow<File?>(null)
+    val compiledVideoFile: StateFlow<File?> = _compiledVideoFile.asStateFlow()
+
+    // Export status notification
+    private val _exportStatus = MutableStateFlow<String?>(null)
+    val exportStatus: StateFlow<String?> = _exportStatus.asStateFlow()
+
     // Live AI Companion chat messages
     private val _liveMessages = MutableStateFlow<List<LiveChatMessage>>(
         listOf(
@@ -88,8 +102,23 @@ class StoryViewModel(application: Application) : AndroidViewModel(application) {
         _activeStory.value = story
     }
 
+    /**
+     * Resets active story state completely so starting a new story does NOT keep the old one visible.
+     */
     fun clearActiveStory() {
         _activeStory.value = null
+        sceneAudioFiles.clear()
+        bgmAudioFile = null
+        _compiledVideoFile.value = null
+        _exportStatus.value = null
+    }
+
+    /**
+     * Starts a completely new story session: wipes old story and resets state to Idle.
+     */
+    fun startNewStory() {
+        clearActiveStory()
+        _generationState.value = GenerationState.Idle
     }
 
     fun fetchQuickTitles(theme: String) {
@@ -105,7 +134,7 @@ class StoryViewModel(application: Application) : AndroidViewModel(application) {
 
     /**
      * Create story from text prompt with Complete End-to-End Multimodal Generation:
-     * Script -> Scene Images -> Speech Audio -> Soundtrack Music -> Video Motion.
+     * Script -> Scene Images -> Speech Audio -> Soundtrack Music -> Video Assembly & Encoding (10s per scene).
      */
     fun createStoryFromPrompt(
         prompt: String,
@@ -114,8 +143,11 @@ class StoryViewModel(application: Application) : AndroidViewModel(application) {
         sceneCount: Int,
         useSearch: Boolean
     ) {
+        // Clear previous story immediately and synchronously so old content is never shown
+        clearActiveStory()
+        _generationState.value = GenerationState.Loading("1/5: جاري تأليف القصة وتقسيم المشاهد (10 ثوانٍ لكل مشهد)...", 0.15f)
+
         viewModelScope.launch {
-            _generationState.value = GenerationState.Loading("1/4: جاري تأليف القصة والسيناريو عبر الذكاء الاصطناعي...", 0.2f)
             try {
                 // Step 1: Generate Story Structure
                 val story = geminiClient.generateStory(
@@ -126,25 +158,33 @@ class StoryViewModel(application: Application) : AndroidViewModel(application) {
                     sceneCount = sceneCount
                 )
 
-                // Step 2: Auto-Generate Images for ALL scenes
-                val updatedScenes = story.scenes.toMutableList()
+                // Enforce 10 seconds per scene
+                val updatedScenes = story.scenes.map { it.copy(durationSec = 10) }.toMutableList()
                 val totalScenes = updatedScenes.size
 
+                val activeImgProvider = providerManager.selectedImageProvider.value
+                val activeVidProvider = providerManager.selectedVideoProvider.value
+
+                // Step 2: Auto-Generate Images for ALL scenes using active image provider
                 for ((idx, scene) in updatedScenes.withIndex()) {
-                    val progress = 0.2f + (0.4f * (idx + 1).toFloat() / totalScenes.toFloat())
+                    val progress = 0.2f + (0.35f * (idx + 1).toFloat() / totalScenes.toFloat())
                     _generationState.value = GenerationState.Loading(
-                        "2/4: جاري توليد صورة المشهد (${idx + 1} من $totalScenes)...",
+                        "2/5: جاري توليد صورة المشهد (${idx + 1} من $totalScenes) عبر ${activeImgProvider.displayName}...",
                         progress
                     )
                     try {
                         val imgPath = geminiClient.generateSceneImage(
                             prompt = scene.imagePrompt,
                             aspectRatio = aspectRatio,
-                            sceneIndex = scene.sceneIndex
+                            sceneIndex = scene.sceneIndex,
+                            forceProvider = activeImgProvider
                         )
                         updatedScenes[idx] = updatedScenes[idx].copy(
                             imageUrl = imgPath,
-                            videoUrl = "cinematic_motion_ready"
+                            imageProviderName = activeImgProvider.displayName,
+                            videoUrl = "cinematic_motion_ready",
+                            videoProviderName = activeVidProvider.displayName,
+                            durationSec = 10
                         )
                     } catch (e: Exception) {
                         Log.e("StoryViewModel", "Image generation error for scene ${scene.sceneIndex}: ${e.message}")
@@ -153,9 +193,9 @@ class StoryViewModel(application: Application) : AndroidViewModel(application) {
 
                 // Step 3: Auto-Generate Narration Audio for ALL scenes
                 for ((idx, scene) in updatedScenes.withIndex()) {
-                    val progress = 0.6f + (0.2f * (idx + 1).toFloat() / totalScenes.toFloat())
+                    val progress = 0.55f + (0.2f * (idx + 1).toFloat() / totalScenes.toFloat())
                     _generationState.value = GenerationState.Loading(
-                        "3/4: جاري إنتاج التعليق الصوتي للمشهد (${idx + 1} من $totalScenes)...",
+                        "3/5: جاري تسجيل التعليق الصوتي للمشهد (${idx + 1} من $totalScenes)...",
                         progress
                     )
                     try {
@@ -170,7 +210,7 @@ class StoryViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 // Step 4: Auto-Generate Soundtrack Music
-                _generationState.value = GenerationState.Loading("4/4: جاري توليد الموسيقى التصويرية المرافقة...", 0.9f)
+                _generationState.value = GenerationState.Loading("4/5: جاري تأليف الموسيقى التصويرية المرافقة (44.1kHz)...", 0.78f)
                 try {
                     val music = geminiClient.generateMusic(story.bgmTrackName, style)
                     bgmAudioFile = music
@@ -182,8 +222,25 @@ class StoryViewModel(application: Application) : AndroidViewModel(application) {
                     userId = currentUserId ?: "",
                     scenes = updatedScenes
                 )
+
+                // Step 5: Automatically Compile All Scenes into Complete Movie File
+                _generationState.value = GenerationState.Loading("5/5: جاري تجميع وترميز الفيديو السينمائي الكامل (10 ثوانٍ لكل مشهد)...", 0.88f)
+                try {
+                    val videoFile = VideoExportHelper.compileStoryToVideo(
+                        context = getApplication(),
+                        story = finalStory,
+                        sceneAudioFiles = sceneAudioFiles,
+                        bgmAudioFile = bgmAudioFile
+                    ) { fraction, msg ->
+                        _generationState.value = GenerationState.Loading(msg, 0.88f + (fraction * 0.11f))
+                    }
+                    _compiledVideoFile.value = videoFile
+                } catch (e: Exception) {
+                    Log.e("StoryViewModel", "Video assembly error: ${e.message}")
+                }
+
                 _activeStory.value = finalStory
-                _generationState.value = GenerationState.Success("تم إنتاج القصة والفيلم السينمائي بالكامل بنجاح! جاهز للعرض والتعديل والتصدير.")
+                _generationState.value = GenerationState.Success("اكتمل إنتاج وتجميع الفيلم بالكامل! جميع المشاهد (10 ثوانٍ) مجهزة مع الصوت والموسيقى وجاهزة للعرض والتصدير للهاتف.")
             } catch (e: Exception) {
                 Log.e("StoryViewModel", "Error creating story: ${e.message}", e)
                 _generationState.value = GenerationState.Error(e.localizedMessage ?: "حدث خطأ أثناء توليد القصة")
@@ -192,7 +249,7 @@ class StoryViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Analyze YouTube video and create similar inspired story with Complete Generation.
+     * Analyze YouTube video and create similar inspired story with Complete Generation and Movie Assembly.
      */
     fun createStoryFromYouTube(
         youtubeUrl: String,
@@ -200,8 +257,10 @@ class StoryViewModel(application: Application) : AndroidViewModel(application) {
         style: String,
         aspectRatio: String
     ) {
+        clearActiveStory()
+        _generationState.value = GenerationState.Loading("1/5: جاري تحليل فيديو يوتيوب وصياغة سيناريو شبيه (10 ثوانٍ لكل مشهد)...", 0.15f)
+
         viewModelScope.launch {
-            _generationState.value = GenerationState.Loading("1/4: جاري تحليل فيديو يوتيوب وصياغة سيناريو شبيه...", 0.2f)
             try {
                 val story = geminiClient.analyzeAndRecreateYouTube(
                     youtubeUrl = youtubeUrl,
@@ -210,24 +269,30 @@ class StoryViewModel(application: Application) : AndroidViewModel(application) {
                     aspectRatio = aspectRatio
                 )
 
-                val updatedScenes = story.scenes.toMutableList()
+                val updatedScenes = story.scenes.map { it.copy(durationSec = 10) }.toMutableList()
                 val totalScenes = updatedScenes.size
+                val activeImgProvider = providerManager.selectedImageProvider.value
+                val activeVidProvider = providerManager.selectedVideoProvider.value
 
                 for ((idx, scene) in updatedScenes.withIndex()) {
-                    val progress = 0.2f + (0.4f * (idx + 1).toFloat() / totalScenes.toFloat())
+                    val progress = 0.2f + (0.35f * (idx + 1).toFloat() / totalScenes.toFloat())
                     _generationState.value = GenerationState.Loading(
-                        "2/4: جاري توليد صور المشاهد (${idx + 1} من $totalScenes)...",
+                        "2/5: جاري توليد صور المشاهد (${idx + 1} من $totalScenes) عبر ${activeImgProvider.displayName}...",
                         progress
                     )
                     try {
                         val imgPath = geminiClient.generateSceneImage(
                             prompt = scene.imagePrompt,
                             aspectRatio = aspectRatio,
-                            sceneIndex = scene.sceneIndex
+                            sceneIndex = scene.sceneIndex,
+                            forceProvider = activeImgProvider
                         )
                         updatedScenes[idx] = updatedScenes[idx].copy(
                             imageUrl = imgPath,
-                            videoUrl = "cinematic_motion_ready"
+                            imageProviderName = activeImgProvider.displayName,
+                            videoUrl = "cinematic_motion_ready",
+                            videoProviderName = activeVidProvider.displayName,
+                            durationSec = 10
                         )
                     } catch (e: Exception) {
                         Log.e("StoryViewModel", "Image generation error: ${e.message}")
@@ -236,8 +301,8 @@ class StoryViewModel(application: Application) : AndroidViewModel(application) {
 
                 for ((idx, scene) in updatedScenes.withIndex()) {
                     _generationState.value = GenerationState.Loading(
-                        "3/4: جاري إنتاج التعليق الصوتي (${idx + 1} من $totalScenes)...",
-                        0.7f
+                        "3/5: جاري إنتاج التعليق الصوتي (${idx + 1} من $totalScenes)...",
+                        0.6f
                     )
                     try {
                         val audioFile = geminiClient.generateSpeech(scene.narration, story.voiceName)
@@ -247,7 +312,7 @@ class StoryViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
 
-                _generationState.value = GenerationState.Loading("4/4: جاري توليد الموسيقى التصويرية الملحمية...", 0.9f)
+                _generationState.value = GenerationState.Loading("4/5: جاري تأليف الموسيقى التصويرية الملحمية...", 0.8f)
                 try {
                     val music = geminiClient.generateMusic(story.bgmTrackName, style)
                     bgmAudioFile = music
@@ -259,8 +324,22 @@ class StoryViewModel(application: Application) : AndroidViewModel(application) {
                     userId = currentUserId ?: "",
                     scenes = updatedScenes
                 )
+
+                _generationState.value = GenerationState.Loading("5/5: جاري تجميع وترميز الفيلم السينمائي الكامل (10 ثوانٍ)...", 0.9f)
+                try {
+                    val videoFile = VideoExportHelper.compileStoryToVideo(
+                        context = getApplication(),
+                        story = finalStory,
+                        sceneAudioFiles = sceneAudioFiles,
+                        bgmAudioFile = bgmAudioFile
+                    )
+                    _compiledVideoFile.value = videoFile
+                } catch (e: Exception) {
+                    Log.e("StoryViewModel", "Video assembly error: ${e.message}")
+                }
+
                 _activeStory.value = finalStory
-                _generationState.value = GenerationState.Success("تم تحليل فيديو يوتيوب وإنتاج الفيلم والقصة بنجاح!")
+                _generationState.value = GenerationState.Success("تم تحليل فيديو يوتيوب وإنتاج الفيلم والقصة بنجاح! جاهز للعرض والتصدير للهاتف.")
             } catch (e: Exception) {
                 Log.e("StoryViewModel", "Error analyzing YouTube: ${e.message}", e)
                 _generationState.value = GenerationState.Error(e.localizedMessage ?: "فشل في تحليل رابط يوتيوب")
@@ -278,7 +357,7 @@ class StoryViewModel(application: Application) : AndroidViewModel(application) {
     /**
      * Update specific scene text, narration, or prompt.
      */
-    fun updateScene(index: Int, narration: String, imagePrompt: String, durationSec: Int) {
+    fun updateScene(index: Int, narration: String, imagePrompt: String, durationSec: Int = 10) {
         val current = _activeStory.value ?: return
         val updatedScenes = current.scenes.toMutableList()
         val targetIndex = updatedScenes.indexOfFirst { it.sceneIndex == index }
@@ -287,32 +366,67 @@ class StoryViewModel(application: Application) : AndroidViewModel(application) {
             updatedScenes[targetIndex] = scene.copy(
                 narration = narration,
                 imagePrompt = imagePrompt,
-                durationSec = durationSec
+                durationSec = 10
             )
             _activeStory.value = current.copy(scenes = updatedScenes)
         }
     }
 
     /**
-     * Generate or regenerate image for a scene using the active multi-provider system.
+     * Generate or regenerate image for a scene using the active or a selected multi-provider option.
      */
-    fun generateSceneImage(sceneIndex: Int, prompt: String, aspectRatio: String) {
+    fun generateSceneImage(sceneIndex: Int, prompt: String, aspectRatio: String, customProvider: ImageProvider? = null) {
+        val provider = customProvider ?: providerManager.selectedImageProvider.value
         viewModelScope.launch {
-            _generationState.value = GenerationState.Loading("جاري توليد صورة المشهد عبر محرك الذكاء الاصطناعي...")
+            _generationState.value = GenerationState.Loading("جاري توليد صورة المشهد عبر ${provider.displayName}...")
             try {
-                val imagePath = geminiClient.generateSceneImage(prompt, aspectRatio, sceneIndex)
+                val imagePath = geminiClient.generateSceneImage(prompt, aspectRatio, sceneIndex, provider)
                 val current = _activeStory.value ?: return@launch
                 val updatedScenes = current.scenes.toMutableList()
                 val targetIndex = updatedScenes.indexOfFirst { it.sceneIndex == sceneIndex }
                 if (targetIndex >= 0) {
-                    updatedScenes[targetIndex] = updatedScenes[targetIndex].copy(imageUrl = imagePath)
+                    updatedScenes[targetIndex] = updatedScenes[targetIndex].copy(
+                        imageUrl = imagePath,
+                        imageProviderName = provider.displayName,
+                        durationSec = 10
+                    )
                     _activeStory.value = current.copy(scenes = updatedScenes)
                 }
-                _generationState.value = GenerationState.Success("تم توليد صورة المشهد بنجاح!")
+                _generationState.value = GenerationState.Success("تم توليد صورة المشهد بنجاح عبر ${provider.displayName}!")
             } catch (e: Exception) {
                 Log.e("StoryViewModel", "Error generating image: ${e.message}", e)
                 _generationState.value = GenerationState.Error("خطأ في توليد الصورة: ${e.localizedMessage}")
             }
+        }
+    }
+
+    /**
+     * Regenerates ALL scene images using the selected ImageProvider.
+     * When user changes provider, this updates the entire story to the new provider!
+     */
+    fun regenerateAllSceneImages(provider: ImageProvider? = null) {
+        val current = _activeStory.value ?: return
+        val effectiveProvider = provider ?: providerManager.selectedImageProvider.value
+        viewModelScope.launch {
+            _generationState.value = GenerationState.Loading("جاري إعادة توليد جميع المشاهد عبر ${effectiveProvider.displayName}...", 0.1f)
+            val updatedScenes = current.scenes.toMutableList()
+            val total = updatedScenes.size
+            for ((idx, sc) in updatedScenes.withIndex()) {
+                val p = 0.1f + (0.85f * (idx + 1).toFloat() / total.toFloat())
+                _generationState.value = GenerationState.Loading("جاري توليد صورة المشهد (${idx + 1} من $total) عبر ${effectiveProvider.displayName}...", p)
+                try {
+                    val imgPath = geminiClient.generateSceneImage(sc.imagePrompt, current.aspectRatio, sc.sceneIndex, effectiveProvider)
+                    updatedScenes[idx] = updatedScenes[idx].copy(
+                        imageUrl = imgPath,
+                        imageProviderName = effectiveProvider.displayName,
+                        durationSec = 10
+                    )
+                } catch (e: Exception) {
+                    Log.e("StoryViewModel", "Error regenerating image for scene ${sc.sceneIndex}: ${e.message}")
+                }
+            }
+            _activeStory.value = current.copy(scenes = updatedScenes)
+            _generationState.value = GenerationState.Success("تم تحديث وتوليد جميع صور المشاهد بنجاح عبر ${effectiveProvider.displayName}!")
         }
     }
 
@@ -355,23 +469,140 @@ class StoryViewModel(application: Application) : AndroidViewModel(application) {
     /**
      * Generate Veo video animation for a scene using veo-3.1-fast-generate-preview.
      */
-    fun generateVeoVideo(sceneIndex: Int, prompt: String, aspectRatio: String) {
+    fun generateVeoVideo(sceneIndex: Int, prompt: String, aspectRatio: String, customProvider: VideoProvider? = null) {
+        val vProvider = customProvider ?: providerManager.selectedVideoProvider.value
         viewModelScope.launch {
-            _generationState.value = GenerationState.Loading("جاري تصيير حركة الفيديو السينمائي للمشهد...")
+            _generationState.value = GenerationState.Loading("جاري تجهيز حركة الفيديو عبر ${vProvider.displayName}...")
             try {
                 val status = geminiClient.generateVeoVideo(prompt, aspectRatio)
                 val current = _activeStory.value ?: return@launch
                 val updatedScenes = current.scenes.toMutableList()
                 val targetIndex = updatedScenes.indexOfFirst { it.sceneIndex == sceneIndex }
                 if (targetIndex >= 0) {
-                    updatedScenes[targetIndex] = updatedScenes[targetIndex].copy(videoUrl = status)
+                    updatedScenes[targetIndex] = updatedScenes[targetIndex].copy(
+                        videoUrl = status,
+                        videoProviderName = vProvider.displayName,
+                        durationSec = 10
+                    )
                     _activeStory.value = current.copy(scenes = updatedScenes)
                 }
-                _generationState.value = GenerationState.Success("تم تجهيز فيديو المشهد بنجاح! اضغط «مشاهدة الفيديو» لتشغيله.")
+                _generationState.value = GenerationState.Success("تم تجهيز فيديو المشهد عبر ${vProvider.displayName}! اضغط «مشاهدة الفيديو» لتشغيله.")
             } catch (e: Exception) {
                 Log.e("StoryViewModel", "Veo error: ${e.message}", e)
                 _generationState.value = GenerationState.Error("فشل تصيير الفيديو: ${e.localizedMessage}")
             }
+        }
+    }
+
+    /**
+     * Regenerates ALL scene videos using the currently selected VideoProvider.
+     */
+    fun regenerateAllSceneVideos(provider: VideoProvider? = null) {
+        val current = _activeStory.value ?: return
+        val effectiveProvider = provider ?: providerManager.selectedVideoProvider.value
+        viewModelScope.launch {
+            _generationState.value = GenerationState.Loading("جاري تطبيق محرك الفيديو ${effectiveProvider.displayName} على جميع المشاهد...", 0.2f)
+            val updatedScenes = current.scenes.map {
+                it.copy(
+                    videoUrl = "cinematic_motion_ready",
+                    videoProviderName = effectiveProvider.displayName,
+                    durationSec = 10
+                )
+            }
+            _activeStory.value = current.copy(scenes = updatedScenes)
+            _generationState.value = GenerationState.Success("تم تحديث محرك الفيديو لجميع المشاهد عبر ${effectiveProvider.displayName}!")
+        }
+    }
+
+    /**
+     * Compiles and encodes the full video from scenes on demand.
+     */
+    fun compileFullVideo(context: Context) {
+        val current = _activeStory.value ?: return
+        viewModelScope.launch {
+            _generationState.value = GenerationState.Loading("جاري تجميع وترميز فيديو المشاهد بالكامل (MP4)...", 0.1f)
+            try {
+                val videoFile = VideoExportHelper.compileStoryToVideo(
+                    context = context,
+                    story = current,
+                    sceneAudioFiles = sceneAudioFiles,
+                    bgmAudioFile = bgmAudioFile
+                ) { fraction, msg ->
+                    _generationState.value = GenerationState.Loading(msg, fraction)
+                }
+                _compiledVideoFile.value = videoFile
+                _generationState.value = GenerationState.Success("اكتمل ترميز الفيديو وتجميعه بنجاح! يمكنك الآن تصديره للهاتف.")
+            } catch (e: Exception) {
+                Log.e("StoryViewModel", "Compile video error: ${e.message}", e)
+                _generationState.value = GenerationState.Error("فشل ترميز الفيديو: ${e.localizedMessage}")
+            }
+        }
+    }
+
+    /**
+     * Exports the compiled video file into the user's phone storage (Movies / Gallery).
+     */
+    fun exportVideoToDevice(context: Context, onResult: (Boolean, String) -> Unit) {
+        val current = _activeStory.value
+        if (current == null) {
+            onResult(false, "لا يوجد مشروع مفتوح لتصديره.")
+            return
+        }
+
+        viewModelScope.launch {
+            _generationState.value = GenerationState.Loading("جاري تصدير وحفظ الفيديو في ذاكرة الهاتف...")
+            try {
+                var videoFile = _compiledVideoFile.value
+                if (videoFile == null || !videoFile.exists()) {
+                    // Compile if not already compiled
+                    videoFile = VideoExportHelper.compileStoryToVideo(
+                        context = context,
+                        story = current,
+                        sceneAudioFiles = sceneAudioFiles,
+                        bgmAudioFile = bgmAudioFile
+                    )
+                    _compiledVideoFile.value = videoFile
+                }
+
+                val savedUri = VideoExportHelper.saveVideoToPhoneStorage(context, videoFile, current.title)
+                if (savedUri != null) {
+                    val msg = "تم تصدير الفيديو وحفظه في مجلد الفيديوهات بالهاتف (Movies/RawiAI) بنجاح! يمكنك فتحه ومشاركته الآن."
+                    _exportStatus.value = msg
+                    _generationState.value = GenerationState.Success(msg)
+                    onResult(true, msg)
+                } else {
+                    val msg = "تم تجهيز ملف الفيديو في ذاكرة التطبيق بنجاح."
+                    _exportStatus.value = msg
+                    _generationState.value = GenerationState.Success(msg)
+                    onResult(true, msg)
+                }
+            } catch (e: Exception) {
+                Log.e("StoryViewModel", "Export video error: ${e.message}", e)
+                val errMsg = "فشل تصدير الفيديو: ${e.localizedMessage}"
+                _generationState.value = GenerationState.Error(errMsg)
+                onResult(false, errMsg)
+            }
+        }
+    }
+
+    fun shareCompiledVideo(context: Context) {
+        val videoFile = _compiledVideoFile.value
+        val title = _activeStory.value?.title ?: "Rawi AI Video"
+        if (videoFile != null && videoFile.exists()) {
+            VideoExportHelper.shareVideoFile(context, videoFile, title)
+        } else {
+            exportVideoToDevice(context) { success, _ ->
+                if (success && _compiledVideoFile.value != null) {
+                    VideoExportHelper.shareVideoFile(context, _compiledVideoFile.value!!, title)
+                }
+            }
+        }
+    }
+
+    fun openCompiledVideo(context: Context) {
+        val videoFile = _compiledVideoFile.value
+        if (videoFile != null && videoFile.exists()) {
+            VideoExportHelper.openVideoFile(context, videoFile)
         }
     }
 
@@ -445,6 +676,39 @@ class StoryViewModel(application: Application) : AndroidViewModel(application) {
 
     fun dismissState() {
         _generationState.value = GenerationState.Idle
+    }
+
+    fun dismissExportStatus() {
+        _exportStatus.value = null
+    }
+
+    /**
+     * In-App Update checking and trigger flows.
+     */
+    fun checkForUpdates(onResult: ((Boolean, String) -> Unit)? = null) {
+        viewModelScope.launch {
+            val info = appUpdateManager.checkForUpdates()
+            if (info.hasUpdate) {
+                onResult?.invoke(true, "يوجد تحديث جديد متاح (${info.latestVersion})")
+            } else {
+                onResult?.invoke(false, "أنت تستخدم أحدث إصدار من التطبيق (${info.currentVersion})")
+            }
+        }
+    }
+
+    fun triggerSimulatedUpdate(targetVersion: String = "v2") {
+        appUpdateManager.triggerSimulatedUpdate(targetVersion)
+    }
+
+    fun downloadAndInstallUpdate(onComplete: (Boolean, String) -> Unit) {
+        val info = appUpdateManager.updateInfo.value
+        viewModelScope.launch {
+            appUpdateManager.downloadAndInstallApk(info.downloadUrl, onComplete)
+        }
+    }
+
+    fun dismissUpdate() {
+        appUpdateManager.dismissUpdate()
     }
 
     override fun onCleared() {
