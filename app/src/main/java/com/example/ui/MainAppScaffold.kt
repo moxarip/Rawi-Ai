@@ -168,6 +168,7 @@ fun MainAppScaffold(
                 }
                 AppNavDestination.PROFILE -> {
                     ProfileScreen(
+                        viewModel = viewModel,
                         onSignOut = onSignOut
                     )
                 }

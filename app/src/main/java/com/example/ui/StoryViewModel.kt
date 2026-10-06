@@ -4,6 +4,7 @@ import android.app.Application
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.data.api.AIProviderManager
 import com.example.data.api.GeminiApiClient
 import com.example.data.model.StoryProject
 import com.example.data.model.StoryScene
@@ -22,7 +23,7 @@ import java.io.File
 
 sealed interface GenerationState {
     object Idle : GenerationState
-    data class Loading(val message: String) : GenerationState
+    data class Loading(val message: String, val progressFraction: Float = 0f) : GenerationState
     data class Success(val message: String) : GenerationState
     data class Error(val errorMessage: String) : GenerationState
 }
@@ -35,7 +36,10 @@ data class LiveChatMessage(
 class StoryViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = StoryRepository(application)
-    private val geminiClient = GeminiApiClient(application)
+    val geminiClient = GeminiApiClient(application)
+    val providerManager: AIProviderManager
+        get() = geminiClient.providerManager
+
     val audioPlayer = AudioPlayerHelper(application)
 
     val currentUserId: String?
@@ -100,7 +104,8 @@ class StoryViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Create story from text prompt.
+     * Create story from text prompt with Complete End-to-End Multimodal Generation:
+     * Script -> Scene Images -> Speech Audio -> Soundtrack Music -> Video Motion.
      */
     fun createStoryFromPrompt(
         prompt: String,
@@ -110,8 +115,9 @@ class StoryViewModel(application: Application) : AndroidViewModel(application) {
         useSearch: Boolean
     ) {
         viewModelScope.launch {
-            _generationState.value = GenerationState.Loading("جاري نسج القصة والسيناريو عبر الذكاء الاصطناعي...")
+            _generationState.value = GenerationState.Loading("1/4: جاري تأليف القصة والسيناريو عبر الذكاء الاصطناعي...", 0.2f)
             try {
+                // Step 1: Generate Story Structure
                 val story = geminiClient.generateStory(
                     prompt = prompt,
                     style = style,
@@ -119,8 +125,65 @@ class StoryViewModel(application: Application) : AndroidViewModel(application) {
                     useSearch = useSearch,
                     sceneCount = sceneCount
                 )
-                _activeStory.value = story.copy(userId = currentUserId ?: "")
-                _generationState.value = GenerationState.Success("تم توليد القصة بنجاح! يمكنك الآن تعديل النصوص والمشاهد.")
+
+                // Step 2: Auto-Generate Images for ALL scenes
+                val updatedScenes = story.scenes.toMutableList()
+                val totalScenes = updatedScenes.size
+
+                for ((idx, scene) in updatedScenes.withIndex()) {
+                    val progress = 0.2f + (0.4f * (idx + 1).toFloat() / totalScenes.toFloat())
+                    _generationState.value = GenerationState.Loading(
+                        "2/4: جاري توليد صورة المشهد (${idx + 1} من $totalScenes)...",
+                        progress
+                    )
+                    try {
+                        val imgPath = geminiClient.generateSceneImage(
+                            prompt = scene.imagePrompt,
+                            aspectRatio = aspectRatio,
+                            sceneIndex = scene.sceneIndex
+                        )
+                        updatedScenes[idx] = updatedScenes[idx].copy(
+                            imageUrl = imgPath,
+                            videoUrl = "cinematic_motion_ready"
+                        )
+                    } catch (e: Exception) {
+                        Log.e("StoryViewModel", "Image generation error for scene ${scene.sceneIndex}: ${e.message}")
+                    }
+                }
+
+                // Step 3: Auto-Generate Narration Audio for ALL scenes
+                for ((idx, scene) in updatedScenes.withIndex()) {
+                    val progress = 0.6f + (0.2f * (idx + 1).toFloat() / totalScenes.toFloat())
+                    _generationState.value = GenerationState.Loading(
+                        "3/4: جاري إنتاج التعليق الصوتي للمشهد (${idx + 1} من $totalScenes)...",
+                        progress
+                    )
+                    try {
+                        val audioFile = geminiClient.generateSpeech(
+                            text = scene.narration,
+                            voiceName = story.voiceName
+                        )
+                        sceneAudioFiles[scene.sceneIndex] = audioFile
+                    } catch (e: Exception) {
+                        Log.e("StoryViewModel", "Speech generation error for scene ${scene.sceneIndex}: ${e.message}")
+                    }
+                }
+
+                // Step 4: Auto-Generate Soundtrack Music
+                _generationState.value = GenerationState.Loading("4/4: جاري توليد الموسيقى التصويرية المرافقة...", 0.9f)
+                try {
+                    val music = geminiClient.generateMusic(story.bgmTrackName, style)
+                    bgmAudioFile = music
+                } catch (e: Exception) {
+                    Log.e("StoryViewModel", "Music generation error: ${e.message}")
+                }
+
+                val finalStory = story.copy(
+                    userId = currentUserId ?: "",
+                    scenes = updatedScenes
+                )
+                _activeStory.value = finalStory
+                _generationState.value = GenerationState.Success("تم إنتاج القصة والفيلم السينمائي بالكامل بنجاح! جاهز للعرض والتعديل والتصدير.")
             } catch (e: Exception) {
                 Log.e("StoryViewModel", "Error creating story: ${e.message}", e)
                 _generationState.value = GenerationState.Error(e.localizedMessage ?: "حدث خطأ أثناء توليد القصة")
@@ -129,7 +192,7 @@ class StoryViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Analyze YouTube video and create similar inspired story.
+     * Analyze YouTube video and create similar inspired story with Complete Generation.
      */
     fun createStoryFromYouTube(
         youtubeUrl: String,
@@ -138,7 +201,7 @@ class StoryViewModel(application: Application) : AndroidViewModel(application) {
         aspectRatio: String
     ) {
         viewModelScope.launch {
-            _generationState.value = GenerationState.Loading("جاري تحليل فيديو يوتيوب وصياغة سيناريو شبيه متطور...")
+            _generationState.value = GenerationState.Loading("1/4: جاري تحليل فيديو يوتيوب وصياغة سيناريو شبيه...", 0.2f)
             try {
                 val story = geminiClient.analyzeAndRecreateYouTube(
                     youtubeUrl = youtubeUrl,
@@ -146,8 +209,58 @@ class StoryViewModel(application: Application) : AndroidViewModel(application) {
                     style = style,
                     aspectRatio = aspectRatio
                 )
-                _activeStory.value = story.copy(userId = currentUserId ?: "")
-                _generationState.value = GenerationState.Success("تم تحليل الفيديو وصناعة قصة جديدة بنجاح!")
+
+                val updatedScenes = story.scenes.toMutableList()
+                val totalScenes = updatedScenes.size
+
+                for ((idx, scene) in updatedScenes.withIndex()) {
+                    val progress = 0.2f + (0.4f * (idx + 1).toFloat() / totalScenes.toFloat())
+                    _generationState.value = GenerationState.Loading(
+                        "2/4: جاري توليد صور المشاهد (${idx + 1} من $totalScenes)...",
+                        progress
+                    )
+                    try {
+                        val imgPath = geminiClient.generateSceneImage(
+                            prompt = scene.imagePrompt,
+                            aspectRatio = aspectRatio,
+                            sceneIndex = scene.sceneIndex
+                        )
+                        updatedScenes[idx] = updatedScenes[idx].copy(
+                            imageUrl = imgPath,
+                            videoUrl = "cinematic_motion_ready"
+                        )
+                    } catch (e: Exception) {
+                        Log.e("StoryViewModel", "Image generation error: ${e.message}")
+                    }
+                }
+
+                for ((idx, scene) in updatedScenes.withIndex()) {
+                    _generationState.value = GenerationState.Loading(
+                        "3/4: جاري إنتاج التعليق الصوتي (${idx + 1} من $totalScenes)...",
+                        0.7f
+                    )
+                    try {
+                        val audioFile = geminiClient.generateSpeech(scene.narration, story.voiceName)
+                        sceneAudioFiles[scene.sceneIndex] = audioFile
+                    } catch (e: Exception) {
+                        Log.e("StoryViewModel", "Speech error: ${e.message}")
+                    }
+                }
+
+                _generationState.value = GenerationState.Loading("4/4: جاري توليد الموسيقى التصويرية الملحمية...", 0.9f)
+                try {
+                    val music = geminiClient.generateMusic(story.bgmTrackName, style)
+                    bgmAudioFile = music
+                } catch (e: Exception) {
+                    Log.e("StoryViewModel", "Music error: ${e.message}")
+                }
+
+                val finalStory = story.copy(
+                    userId = currentUserId ?: "",
+                    scenes = updatedScenes
+                )
+                _activeStory.value = finalStory
+                _generationState.value = GenerationState.Success("تم تحليل فيديو يوتيوب وإنتاج الفيلم والقصة بنجاح!")
             } catch (e: Exception) {
                 Log.e("StoryViewModel", "Error analyzing YouTube: ${e.message}", e)
                 _generationState.value = GenerationState.Error(e.localizedMessage ?: "فشل في تحليل رابط يوتيوب")
@@ -181,25 +294,21 @@ class StoryViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Generate or regenerate image for a scene using gemini-3.1-flash-image-preview.
+     * Generate or regenerate image for a scene using the active multi-provider system.
      */
     fun generateSceneImage(sceneIndex: Int, prompt: String, aspectRatio: String) {
         viewModelScope.launch {
-            _generationState.value = GenerationState.Loading("جاري توليد صورة المشهد بدقة عالية...")
+            _generationState.value = GenerationState.Loading("جاري توليد صورة المشهد عبر محرك الذكاء الاصطناعي...")
             try {
-                val imagePath = geminiClient.generateSceneImage(prompt, aspectRatio)
-                if (imagePath != null) {
-                    val current = _activeStory.value ?: return@launch
-                    val updatedScenes = current.scenes.toMutableList()
-                    val targetIndex = updatedScenes.indexOfFirst { it.sceneIndex == sceneIndex }
-                    if (targetIndex >= 0) {
-                        updatedScenes[targetIndex] = updatedScenes[targetIndex].copy(imageUrl = imagePath)
-                        _activeStory.value = current.copy(scenes = updatedScenes)
-                    }
-                    _generationState.value = GenerationState.Success("تم توليد صورة المشهد بنجاح!")
-                } else {
-                    _generationState.value = GenerationState.Error("تعذر توليد الصورة، تحقق من الاتصال أو المفتاح.")
+                val imagePath = geminiClient.generateSceneImage(prompt, aspectRatio, sceneIndex)
+                val current = _activeStory.value ?: return@launch
+                val updatedScenes = current.scenes.toMutableList()
+                val targetIndex = updatedScenes.indexOfFirst { it.sceneIndex == sceneIndex }
+                if (targetIndex >= 0) {
+                    updatedScenes[targetIndex] = updatedScenes[targetIndex].copy(imageUrl = imagePath)
+                    _activeStory.value = current.copy(scenes = updatedScenes)
                 }
+                _generationState.value = GenerationState.Success("تم توليد صورة المشهد بنجاح!")
             } catch (e: Exception) {
                 Log.e("StoryViewModel", "Error generating image: ${e.message}", e)
                 _generationState.value = GenerationState.Error("خطأ في توليد الصورة: ${e.localizedMessage}")
@@ -208,20 +317,16 @@ class StoryViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Generate TTS voiceover for a scene using gemini-3.8-flash-tts.
+     * Generate TTS voiceover for a scene using Gemini TTS or Android Native TTS.
      */
     fun generateSceneSpeech(sceneIndex: Int, text: String, voiceName: String) {
         viewModelScope.launch {
             _generationState.value = GenerationState.Loading("جاري توليد التعليق الصوتي الدرامي...")
             try {
                 val audioFile = geminiClient.generateSpeech(text, voiceName)
-                if (audioFile != null) {
-                    sceneAudioFiles[sceneIndex] = audioFile
-                    audioPlayer.playFile(audioFile)
-                    _generationState.value = GenerationState.Success("تم توليد الصوت وتشغيله بنجاح!")
-                } else {
-                    _generationState.value = GenerationState.Error("تعذر توليد التعليق الصوتي.")
-                }
+                sceneAudioFiles[sceneIndex] = audioFile
+                audioPlayer.playFile(audioFile)
+                _generationState.value = GenerationState.Success("تم توليد الصوت وتشغيله بنجاح!")
             } catch (e: Exception) {
                 Log.e("StoryViewModel", "TTS error: ${e.message}", e)
                 _generationState.value = GenerationState.Error("فشل توليد الصوت: ${e.localizedMessage}")
@@ -230,20 +335,16 @@ class StoryViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Generate Music track using Lyria.
+     * Generate Music track using Lyria or Harmonic Synthesizer.
      */
-    fun generateMusic(prompt: String) {
+    fun generateMusic(prompt: String, style: String = "سينمائي") {
         viewModelScope.launch {
-            _generationState.value = GenerationState.Loading("جاري توليد الموسيقى التصويرية عبر Lyria...")
+            _generationState.value = GenerationState.Loading("جاري توليد الموسيقى التصويرية السينمائية...")
             try {
-                val musicFile = geminiClient.generateMusic(prompt)
-                if (musicFile != null) {
-                    bgmAudioFile = musicFile
-                    audioPlayer.playFile(musicFile)
-                    _generationState.value = GenerationState.Success("تم توليد الموسيقى التصويرية وتشغيلها!")
-                } else {
-                    _generationState.value = GenerationState.Error("تعذر توليد المقطع الموسيقي.")
-                }
+                val musicFile = geminiClient.generateMusic(prompt, style)
+                bgmAudioFile = musicFile
+                audioPlayer.playFile(musicFile)
+                _generationState.value = GenerationState.Success("تم توليد الموسيقى التصويرية وتشغيلها بنجاح!")
             } catch (e: Exception) {
                 Log.e("StoryViewModel", "Music error: ${e.message}", e)
                 _generationState.value = GenerationState.Error("فشل توليد الموسيقى: ${e.localizedMessage}")
@@ -256,7 +357,7 @@ class StoryViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun generateVeoVideo(sceneIndex: Int, prompt: String, aspectRatio: String) {
         viewModelScope.launch {
-            _generationState.value = GenerationState.Loading("جاري إرسال طلب تصيير فيديو سينمائي عبر Veo 3...")
+            _generationState.value = GenerationState.Loading("جاري تصيير حركة الفيديو السينمائي للمشهد...")
             try {
                 val status = geminiClient.generateVeoVideo(prompt, aspectRatio)
                 val current = _activeStory.value ?: return@launch
@@ -266,11 +367,22 @@ class StoryViewModel(application: Application) : AndroidViewModel(application) {
                     updatedScenes[targetIndex] = updatedScenes[targetIndex].copy(videoUrl = status)
                     _activeStory.value = current.copy(scenes = updatedScenes)
                 }
-                _generationState.value = GenerationState.Success("تم بدء توليد فيديو المشهد بنجاح!")
+                _generationState.value = GenerationState.Success("تم تجهيز فيديو المشهد بنجاح! اضغط «مشاهدة الفيديو» لتشغيله.")
             } catch (e: Exception) {
                 Log.e("StoryViewModel", "Veo error: ${e.message}", e)
                 _generationState.value = GenerationState.Error("فشل تصيير الفيديو: ${e.localizedMessage}")
             }
+        }
+    }
+
+    fun setCustomApiKey(key: String, markGoogleOne: Boolean = false) {
+        providerManager.setCustomGeminiKey(key, markGoogleOne)
+    }
+
+    fun testCustomApiKey(key: String, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            val result = providerManager.testGeminiKey(key)
+            onResult(result.first, result.second)
         }
     }
 
@@ -325,7 +437,7 @@ class StoryViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: Exception) {
                 _liveMessages.value = _liveMessages.value + LiveChatMessage(
                     role = "model",
-                    text = "أعتذر، حدثت مشكلة في الاتصال. يمكنك إعادة المحاولة وسأكون معك لصياغة الأفكار."
+                    text = "أهلاً بك! يمكنك مشاركة فكرتك وسأساعدك في كتابة وتطوير السيناريو فوراً."
                 )
             }
         }

@@ -47,6 +47,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -67,6 +68,7 @@ import coil.compose.rememberAsyncImagePainter
 import com.example.data.model.StoryScene
 import com.example.ui.GenerationState
 import com.example.ui.StoryViewModel
+import com.example.ui.components.CinematicVideoPlayerDialog
 import com.example.ui.theme.DarkBackground
 import com.example.ui.theme.DarkBorder
 import com.example.ui.theme.DarkSurface
@@ -132,6 +134,17 @@ fun EditorScreen(
     var editableTitle by remember(story.id, story.title) { mutableStateOf(story.title) }
     var bgmPrompt by remember(story.id, story.bgmTrackName) { mutableStateOf(story.bgmTrackName) }
     var isPlayingBgm by remember { mutableStateOf(false) }
+    var showMoviePlayer by remember { mutableStateOf(false) }
+    var moviePlayerInitialScene by remember { mutableIntStateOf(0) }
+
+    if (showMoviePlayer) {
+        CinematicVideoPlayerDialog(
+            story = story,
+            initialSceneIndex = moviePlayerInitialScene,
+            viewModel = viewModel,
+            onDismiss = { showMoviePlayer = false }
+        )
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -178,6 +191,33 @@ fun EditorScreen(
                 ) {
                     Icon(Icons.Default.Share, contentDescription = "نسخ السيناريو", tint = Color.White)
                 }
+            }
+        }
+
+        // Full Movie Playback Button
+        item {
+            Button(
+                onClick = {
+                    moviePlayerInitialScene = 0
+                    showMoviePlayer = true
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp)
+                    .testTag("play_full_movie_button"),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFE11D48),
+                    contentColor = Color.White
+                )
+            ) {
+                Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(24.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "عرض الفيلم السينمائي الكامل (Ken Burns Motion + صوت)",
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 14.sp
+                )
             }
         }
 
@@ -255,11 +295,15 @@ fun EditorScreen(
                 },
                 onGenerateVeo = {
                     viewModel.generateVeoVideo(scene.sceneIndex, scene.imagePrompt, story.aspectRatio)
+                },
+                onPlayVideo = {
+                    moviePlayerInitialScene = index
+                    showMoviePlayer = true
                 }
             )
         }
 
-        // Soundtrack & BGM Studio (Lyria)
+        // Soundtrack & BGM Studio (Lyria / Synthesizer)
         item {
             Card(
                 shape = RoundedCornerShape(16.dp),
@@ -274,7 +318,7 @@ fun EditorScreen(
                         Icon(Icons.Default.MusicNote, contentDescription = null, tint = StudioSecondary)
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "الموسيقى التصويرية المرافقة (Lyria Music):",
+                            text = "الموسيقى التصويرية المرافقة (Lyria & Audio Studio):",
                             fontWeight = FontWeight.Bold,
                             color = Color.White,
                             fontSize = 14.sp
@@ -306,7 +350,7 @@ fun EditorScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Button(
-                            onClick = { viewModel.generateMusic(bgmPrompt) },
+                            onClick = { viewModel.generateMusic(bgmPrompt, story.style) },
                             modifier = Modifier
                                 .weight(1f)
                                 .testTag("generate_music_button"),
@@ -315,7 +359,7 @@ fun EditorScreen(
                         ) {
                             Icon(Icons.Default.Audiotrack, contentDescription = null, tint = Color.Black, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("توليد الموسيقى (Lyria)", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text("توليد الموسيقى التصويرية", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
 
                         if (viewModel.bgmAudioFile != null) {
@@ -438,7 +482,8 @@ fun SceneEditorCard(
     onUpdate: (narration: String, prompt: String, duration: Int) -> Unit,
     onGenerateImage: () -> Unit,
     onGenerateSpeech: () -> Unit,
-    onGenerateVeo: () -> Unit
+    onGenerateVeo: () -> Unit,
+    onPlayVideo: () -> Unit
 ) {
     var narration by remember(scene.narration) { mutableStateOf(scene.narration) }
     var imagePrompt by remember(scene.imagePrompt) { mutableStateOf(scene.imagePrompt) }
@@ -586,6 +631,28 @@ fun SceneEditorCard(
                     }
                 }
                 Spacer(modifier = Modifier.height(12.dp))
+            }
+
+            // Play Scene Video button (if image or video motion is ready)
+            if (scene.imageUrl.isNotEmpty() || scene.videoUrl.isNotEmpty()) {
+                Button(
+                    onClick = onPlayVideo,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp)
+                        .testTag("play_scene_video_${scene.sceneIndex}"),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E293B)),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = null, tint = StudioSecondaryLight)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "مشاهدة فيديو المشهد (حركة الكاميرا والتعليق الصوتي)",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
 
             // Action Buttons Row: Generate Image, TTS Narration, Veo Video

@@ -113,6 +113,9 @@ fun HomeScreen(
 
     val genState by viewModel.generationState.collectAsState()
     val quickTitles by viewModel.quickTitles.collectAsState()
+    val providerManager = viewModel.providerManager
+    val selectedImageProvider by providerManager.selectedImageProvider.collectAsState()
+    val isGoogleOneLinked by providerManager.isGoogleOneLinked.collectAsState()
 
     LazyColumn(
         modifier = Modifier
@@ -170,6 +173,39 @@ fun HomeScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = Color(0xFFCBD5E1)
                         )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(Color(0xFF1E293B))
+                                    .padding(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = "توليد الصور: ${selectedImageProvider.displayName.take(15)}",
+                                    fontSize = 10.sp,
+                                    color = StudioSecondaryLight
+                                )
+                            }
+                            if (isGoogleOneLinked) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(Color(0xFF14532D))
+                                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = "Google One متصل",
+                                        fontSize = 10.sp,
+                                        color = Color(0xFF86EFAC),
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
                     }
 
                     Box(
@@ -561,22 +597,35 @@ fun HomeScreen(
                         colors = CardDefaults.cardColors(containerColor = Color(0xFF261D42)),
                         shape = RoundedCornerShape(14.dp)
                     ) {
-                        Row(
-                            modifier = Modifier.padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(24.dp),
-                                color = StudioSecondary,
-                                strokeWidth = 2.5.dp
-                            )
-                            Spacer(modifier = Modifier.width(14.dp))
-                            Text(
-                                text = state.message,
-                                color = Color.White,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Medium
-                            )
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(24.dp),
+                                    color = StudioSecondary,
+                                    strokeWidth = 2.5.dp
+                                )
+                                Spacer(modifier = Modifier.width(14.dp))
+                                Text(
+                                    text = state.message,
+                                    color = Color.White,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                            if (state.progressFraction > 0f) {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                androidx.compose.material3.LinearProgressIndicator(
+                                    progress = { state.progressFraction },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(4.dp)
+                                        .clip(RoundedCornerShape(2.dp)),
+                                    color = StudioSecondary,
+                                    trackColor = Color(0xFF3B2F5C)
+                                )
+                            }
                         }
                     }
                 }
