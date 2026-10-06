@@ -1,0 +1,6 @@
+{
+  "name": "Rawi AI",
+  "description": "صانع قصص وفيديوهات ذكي بالذكاء الاصطناعي وتحليل فيديوهات يوتيوب وتوليد صور وأصوات",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

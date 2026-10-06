@@ -1,0 +1,51 @@
+{
+  "entities": {
+    "StoryProject": {
+      "title": "StoryProject",
+      "description": "Represents a generated AI story and video project created by a user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "prompt": { "type": "string" },
+        "youtubeUrl": { "type": "string" },
+        "aspectRatio": { "type": "string" },
+        "style": { "type": "string" },
+        "status": { "type": "string" },
+        "bgmTrackName": { "type": "string" },
+        "voiceName": { "type": "string" },
+        "scenes": { "type": "array" },
+        "fullScript": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "title", "createdAt", "updatedAt"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User preferences and account settings",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "preferredVoice": { "type": "string" },
+        "preferredRatio": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "email", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/stories/{storyId}": {
+      "schema": "StoryProject",
+      "description": "Stories and video projects owned by the user"
+    },
+    "/users/{userId}/profile/main": {
+      "schema": "UserProfile",
+      "description": "Profile settings of the user"
+    }
+  }
+}
